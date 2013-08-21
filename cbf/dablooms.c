@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <errno.h>
+#include "byteswap.h"
 
 #include "murmur.h"
 #include "dablooms.h"
@@ -20,6 +21,8 @@
 
 #define ERROR_TIGHTENING_RATIO 0.5
 #define SALT_CONSTANT 0x97c29b3a
+
+static const unsigned long bit_num_for_count = 12;
 
 const char *dablooms_version(void)
 {
@@ -109,60 +112,83 @@ bitmap_t *new_bitmap(int fd, size_t bytes)
 	return bitmap;
 }
 
+/* increments the bit_num_for_count bit counter */
 int bitmap_increment(bitmap_t *bitmap, unsigned int index, long offset)
 {
-	long access = index / 2 + offset;
-	uint8_t temp;
-	uint8_t n = bitmap->array[access];
-	if (index % 2 != 0) {
-		temp = (n & 0x0f);
-		n = (n & 0xf0) + ((n & 0x0f) + 0x01);
+	long access = (index * bit_num_for_count) / 8 + offset;
+	uint8_t *nt = &bitmap->array[access];
+	uint16_t temp;
+	uint16_t n = *(uint16_t *)nt;
+#if BYTE_ORDER == LITTLE_ENDIAN
+	n = __bswap_16(n);
+#endif
+	int	bit = (16 - bit_num_for_count);
+	if ((index * bit_num_for_count % 8) != 0) {
+		temp = n & ((1<<bit_num_for_count)-1);
+		n = n + 1;
 	} else {
-		temp = (n & 0xf0) >> 4;
-		n = (n & 0x0f) + ((n & 0xf0) + 0x10);
+		temp = n >> bit;
+		n = n + (1<<bit);
 	}
 
-	if (temp == 0x0f) {
-		fprintf(stderr, "Error, 4 bit int Overflow\n");
+	if (temp == (1<<bit_num_for_count)-1) {
+		fprintf(stderr, "Error, %ld bit int Overflow\n", bit_num_for_count);
 		return -1;
 	}
 
-	bitmap->array[access] = n;
+#if BYTE_ORDER == LITTLE_ENDIAN
+	n = __bswap_16(n);
+#endif
+	*(uint16_t *)nt = n;
 	return 0;
 }
 
-/* increments the four bit counter */
+/* decrements the bit_num_for_count bit counter */
 int bitmap_decrement(bitmap_t *bitmap, unsigned int index, long offset)
 {
-	long access = index / 2 + offset;
-	uint8_t temp;
-	uint8_t n = bitmap->array[access];
+	int	bit = (16 - bit_num_for_count);
+	long access = (index * bit_num_for_count) / 8 + offset;
+	uint8_t *nt = &bitmap->array[access];
+	uint16_t temp;
+	uint16_t n = *(uint16_t *)nt;
+#if BYTE_ORDER == LITTLE_ENDIAN
+	n = __bswap_16(n);
+#endif
 
-	if (index % 2 != 0) {
-		temp = (n & 0x0f);
-		n = (n & 0xf0) + ((n & 0x0f) - 0x01);
+	if (index * bit_num_for_count % 8 != 0) {
+		temp = n & ((1<<bit_num_for_count)-1);
+		n = n - 1;
 	} else {
-		temp = (n & 0xf0) >> 4;
-		n = (n & 0x0f) + ((n & 0xf0) - 0x10);
+		temp = n >> bit;
+		n = n - (1<<bit);
 	}
 
-	if (temp == 0x00) {
+	if (temp == 0x0000) {
 		fprintf(stderr, "Error, Decrementing zero\n");
 		return -1;
 	}
 
-	bitmap->array[access] = n;
+#if BYTE_ORDER == LITTLE_ENDIAN
+	n = __bswap_16(n);
+#endif
+	*(uint16_t *)nt = n;
 	return 0;
 }
 
-/* decrements the four bit counter */
+/* check the bit_num_for_count bit counter */
 int bitmap_check(bitmap_t *bitmap, unsigned int index, long offset)
 {
-	long access = index / 2 + offset;
-	if (index % 2 != 0 ) {
-		return bitmap->array[access] & 0x0f;
+	int	bit = (16 - bit_num_for_count);
+	long access = (index * bit_num_for_count) / 8 + offset;
+	uint8_t *nt = &bitmap->array[access];
+	uint16_t n = *(uint16_t *)nt;
+#if BYTE_ORDER == LITTLE_ENDIAN
+	n = __bswap_16(n);
+#endif
+	if ((index * bit_num_for_count % 8) != 0) {
+		return n & ((1<<bit_num_for_count)-1);
 	} else {
-		return bitmap->array[access] & 0xf0;
+		return n >> bit;
 	}
 }
 
@@ -175,6 +201,30 @@ int bitmap_flush(bitmap_t *bitmap)
 		return 0;
 	}
 }
+
+#ifdef HASH_TEST
+extern unsigned int ELFHash(char *);
+extern unsigned int JsHash(char *);
+extern unsigned int RSHash(char *);
+extern unsigned int PJWHash(char *);
+extern unsigned int BKDRHash(char *);
+extern unsigned int SDBMHash(char *);
+extern unsigned int DJBHash(char *);
+extern unsigned int APHash(char *);
+
+extern hashi;
+unsigned int (*hash[])(char *input) = {
+	ELFHash, JsHash, RSHash, PJWHash, BKDRHash, SDBMHash, DJBHash, APHash
+};
+void hash_func(counting_bloom_t *bloom, const char *key, size_t key_len, uint32_t *hashes)
+{
+	int i=0;
+	unsigned int h1 = hash[hashi]((char *)key);
+	for (i = 0; i < bloom->nfuncs; i++) {
+		hashes[i] = (h1) % bloom->counts_per_func;
+	}
+}
+#else
 
 /*
  * Perform the actual hashing for `key`
@@ -198,6 +248,7 @@ void hash_func(counting_bloom_t *bloom, const char *key, size_t key_len, uint32_
 		hashes[i] = (h1 + i * h2) % bloom->counts_per_func;
 	}
 }
+#endif
 
 int free_counting_bloom(counting_bloom_t *bloom)
 {
@@ -227,7 +278,7 @@ counting_bloom_t *counting_bloom_init(unsigned int capacity, double error_rate, 
 	bloom->counts_per_func = (int) ceil(capacity * fabs(log(error_rate)) / (bloom->nfuncs * pow(log(2), 2)));
 	bloom->size = bloom->nfuncs * bloom->counts_per_func;
 	/* rounding-up integer divide by 2 of bloom->size */
-	bloom->num_bytes = ((bloom->size + 1) / 2) + sizeof(counting_bloom_header_t);
+	bloom->num_bytes = ceil((bloom->size * bit_num_for_count / 8)) + sizeof(counting_bloom_header_t);
 	bloom->hashes = calloc(bloom->nfuncs, sizeof(uint32_t));
 
 	return bloom;

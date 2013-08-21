@@ -10,6 +10,8 @@
 #define CAPACITY 500000
 #define ERROR_RATE .0005
 
+int hashi = 0;
+
 enum {
 	TEST_PASS,
 	TEST_WARN,
@@ -23,6 +25,7 @@ struct stats {
 	int false_negatives;
 };
 
+
 static void chomp_line(char *word)
 {
 	char *p;
@@ -34,10 +37,16 @@ static void chomp_line(char *word)
 	}
 }
 
+char *hash_fun[] = {
+	"ELFHash", "JsHash", "RSHash", "PJWHash", "BKDRHash", "SDBMHash", "DJBHash", "APHash"
+};
+
 static int print_results(struct stats *stats)
 {
 	float false_positive_rate = (float)stats->false_positives /
 		(stats->false_positives + stats->true_negatives);
+
+	printf("Hash function :     %s \n", hash_fun[hashi]);
 
 	printf("True positives:     %7d"   "\n"
 			"True negatives:     %7d"   "\n"
@@ -121,10 +130,14 @@ int test_counting_remove_reopen(const char *bloom_file, const char *words_file)
 	bloom = new_counting_bloom_from_file(CAPACITY, ERROR_RATE, bloom_file);
 
 	fseek(fp, 0, SEEK_SET);
+	int false_p = 0;
 	for (i = 0; (fgets(word, sizeof(word), fp)) && (i < CAPACITY); i++) {
 		chomp_line(word);
 		key_removed = (i % 5 == 0);
+		false_p = results.false_positives;
 		bloom_score(counting_bloom_check(bloom, word, strlen(word)), !key_removed, &results, word);
+		if(false_p != results.false_positives)
+			printf("%s\n", word);
 	}
 	fclose(fp);
 
@@ -306,10 +319,11 @@ int test_scaling_accuracy(const char *bloom_file, const char *words_file)
 	return print_results(&results);
 }
 
+
 int main(int argc, char *argv[])
 {
 	printf("** dablooms version: %s\n", dablooms_version());
-	int i;
+	int i,j;
 	int failures = 0, warnings = 0;
 
 	if (argc != 3) {
@@ -319,17 +333,21 @@ int main(int argc, char *argv[])
 
 	int (*tests[])(const char *, const char *) = {
 		test_counting_remove_reopen,
-		test_counting_accuracy,
-		test_scaling_remove_reopen,
-		test_scaling_accuracy,
+		//test_counting_accuracy,
+		//test_scaling_remove_reopen,
+		//test_scaling_accuracy,
 		NULL,
 	};
-	for (i = 0; tests[i] != NULL;  i++) {
-		int result = (tests[i])(argv[1], argv[2]);
-		if (result == TEST_FAIL) {
-			failures++;
-		} else if (result == TEST_WARN) {
-			warnings++;
+	for(j=0;j<1;j++)
+	{
+		hashi = j;
+		for (i = 0; tests[i] != NULL;  i++) {
+			int result = (tests[i])(argv[1], argv[2]);
+			if (result == TEST_FAIL) {
+				failures++;
+			} else if (result == TEST_WARN) {
+				warnings++;
+			}
 		}
 	}
 
