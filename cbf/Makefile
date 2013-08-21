@@ -63,7 +63,7 @@ ifeq ($(UNAME),Darwin)
 endif
 SHARED_LDFLAGS = -shared -Wl,$(SO_CMD),libdablooms.$(SO_EXT_MAJOR)
 
-SRCS_LIBDABLOOMS = dablooms.c murmur.c
+SRCS_LIBDABLOOMS = dablooms.c murmur.c hash.c
 SRCS_TESTS = test_dablooms.c
 WORDS = /usr/share/dict/words
 OBJS_LIBDABLOOMS = $(patsubst %.c, $(BLDDIR)/%.o, $(SRCS_LIBDABLOOMS))
@@ -131,7 +131,7 @@ help:
 	@printf $(HELPTEXT)
 
 clean:
-	rm -f $(DEPS) $(OBJS_LIBDABLOOMS) $(patsubst %, $(BLDDIR)/%, $(LIB_FILES)) $(OBJS_TESTS) $(BLDDIR)/test_dablooms $(BLDDIR)/testbloom.bin
+	#rm -f $(DEPS) $(OBJS_LIBDABLOOMS) $(patsubst %, $(BLDDIR)/%, $(LIB_FILES)) $(OBJS_TESTS) $(BLDDIR)/test_dablooms $(BLDDIR)/testbloom.bin
 	#rmdir $(BLDDIR)
 
 .PHONY: all clean help install test libdablooms install_libdablooms

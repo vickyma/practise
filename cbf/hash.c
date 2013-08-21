@@ -5,8 +5,8 @@
 //******************************* ELF*******************************//
 unsigned int ELFHash(char *str)
 {                                               
-	int hash = 0;   
-	long x =0;     
+	unsigned int hash = 0;   
+	unsigned long x =0;     
 	while (*str){
 		hash = (hash << 4) + *str++;   
 		if((x = (hash & 0xF0000000L)) != 0){   
@@ -14,8 +14,7 @@ unsigned int ELFHash(char *str)
 			hash &= ~x;   
 		}   
 	}   
-	int result = (hash & 0x7FFFFFFF) ;   
-	return result;   
+	return (hash & 0x7FFFFFFF) ;   
 } 
 //*************************** JS Hash Function **********************//
 unsigned int JsHash( char * str)                           
@@ -145,44 +144,56 @@ int main(int argc, char **argv)
 	int  hashi = 0;
 	FILE *fd, *wfd;
 	char buf[32];
-	time_t start = 0, end = 0;	
+	char cbuf[32];
+	struct timeval start, end;
 	unsigned int hcode = 0;
 	char wfile[32] = {0};
+	char *p = NULL;
 
-	if(argc == 2)
+	if(argc >= 2)
 		hashi = atoi(argv[1]);
 
+	printf("hashi=%d\n", hashi);
+	if(argc >= 3)
+	{
+		hcode = (hash[hashi])(argv[2]);
+		printf("%s hash %u\n", argv[2], hcode);
+		return 0;
+	}
+
+
 	fd = fopen("/usr/share/dict/words","r");
+	//fd = fopen("random.txt","r");
 	if(fd == NULL)
 		printf("open file for read error\n");
 
-
-	snprintf(wfile, sizeof(wfile), "%s_random.txt",h_name[hashi]);
+	snprintf(wfile, sizeof(wfile), "%s_random%d.txt",h_name[hashi], hashi);
 	wfd = fopen(wfile,"w+");
 	if(wfd == NULL)
 		printf("open file for write error\n");
 
-	start = time(NULL);
+	gettimeofday(&start, NULL);
 	while(fgets(buf,sizeof(buf),fd))
 	{
-		hcode = (hash[hashi])(buf);
-		snprintf(buf, sizeof(buf), "%d\r\n", hcode);
-		fwrite(buf, strlen(buf),1,wfd);
-	}
-	end = time(NULL);
+		p = buf;
+		p += strlen(buf);
+		p--;
+		while ((*p=='\n' || *p=='\r') && p >= buf) 
+			p--;
+		*(p+1)='\0';
 
-	rewind(fd);
-	while(fgets(buf,sizeof(buf),fd))
-	{
-		
+		hcode = (hash[hashi])(buf);
+		snprintf(cbuf, sizeof(cbuf), "%u \t%s\n", hcode, buf);
+		fwrite(cbuf, strlen(cbuf),1,wfd);
 	}
+	gettimeofday(&end, NULL);
 
 	fclose(fd);
 	fclose(wfd);
 	fd = wfd = NULL;
 
 
-	printf("%s cose %ld secondes\n", h_name[hashi], end - start);
+	printf("%s cose %ld secondes %ld usecondes \n", h_name[hashi], end.tv_sec - start.tv_sec, end.tv_usec - start.tv_usec);
 
 	return 0;
 }
